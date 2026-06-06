@@ -1,0 +1,17 @@
+.env
+.env.local
+.env.production
+__pycache__/
+*.pyc
+*.pyo
+venv/
+node_modules/
+.next/
+*.egg-info/
+dist/
+build/
+.DS_Store
+*.log
+ngrok*
+.BlueBloodDashboard.jsx
+agents/agent_manager.py
