@@ -6,7 +6,14 @@
     "dev": "next dev",
     "build": "next build",
     "start": "next start",
-    "lint": "eslint"
+    "lint": "eslint",
+    "preinstall": "echo 'legacy-peer-deps'"
+  },
+  "overrides": {
+    "react-simple-maps": {
+      "react": "$react",
+      "react-dom": "$react-dom"
+    }
   },
   "dependencies": {
     "@types/leaflet": "^1.9.21",
@@ -15,7 +22,7 @@
     "react": "19.2.4",
     "react-dom": "19.2.4",
     "react-leaflet": "^5.0.0",
-    "react-simple-maps": "^3.0.0"
+    "react-simple-maps": "3.0.0"
   },
   "devDependencies": {
     "@tailwindcss/postcss": "^4",
