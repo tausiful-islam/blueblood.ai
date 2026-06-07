@@ -11,21 +11,34 @@ from pydantic import BaseModel
 load_dotenv()
 
 from agents.pipeline import run_single, run_full_scan
-from data.feeds import fetch_health_news, fetch_who_alerts
+from data.feeds import fetch_all_sources
 
 latest_scan_result = {}
 scan_in_progress = False
 
 
+async def _auto_scan():
+    global latest_scan_result
+    try:
+        articles = await fetch_all_sources(max_per_source=5)
+        if articles:
+            result = await asyncio.to_thread(run_full_scan, articles)
+            latest_scan_result = result
+            print(f"Auto-scan complete: {result['threats_found']} threats found from {result['total_scanned']} articles")
+    except Exception as e:
+        print(f"Auto-scan error: {e}")
+
+
 @asynccontextmanager
 async def lifespan(app: FastAPI):
+    await _auto_scan()
     yield
 
 
 app = FastAPI(
     title="BlueBlood.ai API",
     description="Multi-agent global health intelligence platform powered by Azure AI Foundry",
-    version="2.0.0",
+    version="3.0.0",
     lifespan=lifespan,
 )
 
@@ -47,7 +60,7 @@ class AnalyzeRequest(BaseModel):
 def root():
     return {
         "status": "BlueBlood.ai is running",
-        "version": "2.0.0",
+        "version": "3.0.0",
         "platform": "Azure AI Foundry",
         "model": os.getenv("MODEL_DEPLOYMENT_NAME", "o4-mini"),
     }
@@ -79,11 +92,8 @@ async def run_scan():
 
     scan_in_progress = True
     try:
-        news_articles = await fetch_health_news(max_articles=4)
-        who_alerts = await fetch_who_alerts()
-        all_articles = news_articles + who_alerts
-
-        result = await asyncio.to_thread(run_full_scan, all_articles)
+        articles = await fetch_all_sources(max_per_source=5)
+        result = await asyncio.to_thread(run_full_scan, articles)
         latest_scan_result = result
         return result
     finally:

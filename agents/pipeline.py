@@ -16,8 +16,9 @@ Analyze the text and return ONLY a valid JSON object (no markdown, no backticks)
 {
   "threat_detected": true or false,
   "disease": "name of disease or threat, or null",
-  "location": "country or region, or null",
-  "severity": "low" or "medium" or "high" or "none",
+  "location": "country name, or null",
+  "country_iso": "ISO 3166-1 numeric code (3 digits like 050 for Bangladesh, 840 for USA), or null",
+  "severity": "low" or "medium" or "high" or "critical" or "none",
   "confidence": 0.0 to 1.0,
   "summary": "one sentence description of the threat",
   "signals": ["list", "of", "key", "signals", "found"]
@@ -59,6 +60,7 @@ Return ONLY a valid JSON object (no markdown, no backticks):
   "escalation_probability_7d": 0.0 to 1.0,
   "escalation_probability_30d": 0.0 to 1.0,
   "at_risk_regions": ["list of nearby countries/regions at risk"],
+  "at_risk_iso": ["ISO 3166-1 numeric codes for at-risk countries"],
   "peak_estimate_days": number or null,
   "reasoning": "2-3 sentence explanation of the forecast",
   "recommended_actions": ["list", "of", "recommended", "public health actions"]
@@ -271,13 +273,20 @@ def run_full_scan(articles: List[Dict]) -> Dict:
         result = run_single(article)
         if result.get("threat_detected"):
             alerts.append(result)
+            iso = result.get("threat", {}).get("country_iso", "") or article.get("country_iso", "")
             location = result.get("threat", {}).get("location", "Unknown")
             risk = result.get("final_risk_level", "green")
             risk_order = {"green": 0, "yellow": 1, "orange": 2, "red": 3}
             if location and location != "Unknown":
-                current = country_risks.get(location, "green")
+                key = iso if iso else location
+                current = country_risks.get(key, {}).get("risk", "green")
                 if risk_order.get(risk, 0) > risk_order.get(current, 0):
-                    country_risks[location] = risk
+                    country_risks[key] = {
+                        "risk": risk,
+                        "name": location,
+                        "iso": iso,
+                        "disease": result.get("threat", {}).get("disease", ""),
+                    }
 
     return {
         "alerts": alerts,
