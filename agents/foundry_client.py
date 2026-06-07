@@ -24,7 +24,7 @@ def get_client() -> AzureOpenAI:
     return _client
 
 
-def call_llm(system_prompt: str, user_prompt: str, max_tokens: int = 500) -> str:
+def call_llm(system_prompt: str, user_prompt: str, max_tokens: int = 4000) -> str:
     client = get_client()
     response = client.chat.completions.create(
         model=MODEL,

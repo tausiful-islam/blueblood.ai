@@ -24,7 +24,7 @@ Analyze the text and return ONLY a valid JSON object (no markdown, no backticks)
   "signals": ["list", "of", "key", "signals", "found"]
 }
 
-Be conservative - only flag real threats, not routine health news."""
+Be thorough - flag any article that mentions disease outbreaks, unusual case counts, health emergencies, or epidemic patterns. When in doubt, flag it."""
 
 
 VERIFICATION_PROMPT = """You are a verification agent for BlueBlood.ai health intelligence platform.
@@ -239,7 +239,7 @@ def run_single(article: Dict) -> Dict:
             f"At-risk: {', '.join(forecast_data.get('at_risk_regions', []))}\n"
             f"Actions: {', '.join(forecast_data.get('recommended_actions', []))}\n"
             f"Why flagged: {explain_data.get('why_flagged')}",
-            max_tokens=400,
+            max_tokens=4000,
         )
     except Exception:
         summary = f"{threat_data.get('disease')} detected in {threat_data.get('location')} with {forecast_data.get('risk_level')} risk level."

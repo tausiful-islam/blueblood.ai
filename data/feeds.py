@@ -76,9 +76,9 @@ async def fetch_health_news(max_articles: int = 10) -> List[Dict]:
         return await _fetch_reliefweb(max_articles)
 
     params = {
-        "q": "disease outbreak OR epidemic OR pandemic OR dengue OR cholera OR ebola OR measles OR influenza OR health emergency",
+        "q": "ebola OR dengue OR cholera OR measles OR outbreak OR pandemic OR \"disease outbreak\" OR \"health emergency\"",
         "language": "en",
-        "sortBy": "publishedAt",
+        "sortBy": "relevancy",
         "pageSize": max_articles,
         "apiKey": NEWS_API_KEY,
     }
@@ -214,9 +214,17 @@ async def fetch_all_sources(max_per_source: int = 5) -> List[Dict]:
             all_articles.extend(result)
     seen = set()
     unique = []
+    health_keywords = [
+        "ebola", "dengue", "cholera", "measles", "outbreak", "pandemic", "epidemic",
+        "who", "health", "disease", "virus", "fever", "malaria", "influenza", "flu",
+        "cases", "infection", "contagious", "vaccine", "hospital", "emergency",
+        "contaminated", "syndrome", "pathogen", "transmission", "mortality",
+    ]
     for a in all_articles:
         key = a.get("title", "").lower()[:50]
         if key not in seen:
             seen.add(key)
-            unique.append(a)
+            text = (a.get("title", "") + " " + a.get("content", "")).lower()
+            if any(kw in text for kw in health_keywords):
+                unique.append(a)
     return unique
