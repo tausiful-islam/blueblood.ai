@@ -24,7 +24,7 @@ Analyze the text and return ONLY a valid JSON object (no markdown, no backticks)
   "signals": ["list", "of", "key", "signals", "found"]
 }
 
-Be thorough - flag any article that mentions disease outbreaks, unusual case counts, health emergencies, or epidemic patterns. When in doubt, flag it."""
+Be very strict: ONLY return threat_detected: true if the article explicitly mentions a current, ongoing disease outbreak or health emergency. DO NOT hallucinate or assume countries. If a country is not explicitly named in the text, set location to null and country_iso to null."""
 
 
 VERIFICATION_PROMPT = """You are a verification agent for BlueBlood.ai health intelligence platform.
@@ -34,6 +34,8 @@ Your job is to assess the credibility of a health threat report based on:
 2. Specificity of the claim (specific numbers, locations, dates = more credible)
 3. Whether this matches known disease patterns for the region
 4. Presence of official confirmation language
+
+Be extremely strict. Ensure that the threat actually exists in the named country based ONLY on the provided text. If the text does not contain proof of an outbreak in that specific location, set verified to false and give a low credibility score (e.g. 0.0 to 0.4).
 
 Return ONLY a valid JSON object (no markdown, no backticks):
 {
@@ -52,7 +54,7 @@ You receive verified threat data and must predict:
 2. Potential geographic spread
 3. Recommended alert level for public health authorities
 
-Use your knowledge of historical outbreak patterns, regional climate, population density, seasonal factors, and healthcare system capacity.
+Use your knowledge of historical outbreak patterns, regional climate, population density, seasonal factors, and healthcare system capacity. DO NOT hallucinate countries in at_risk_regions or at_risk_iso. Only provide actual bordering or highly connected countries if there is a realistic risk of spread.
 
 Return ONLY a valid JSON object (no markdown, no backticks):
 {
@@ -134,7 +136,8 @@ def run_single(article: Dict) -> Dict:
     steps[-1]["status"] = "done"
     steps[-1]["result"] = threat_data
 
-    if not threat_data.get("threat_detected"):
+    td = threat_data.get("threat_detected")
+    if not (td is True or str(td).lower() == "true"):
         return {
             "article": article, "threat_detected": False, "steps": steps,
             "timestamp": timestamp, "final_risk_level": "green",
@@ -271,9 +274,25 @@ def run_full_scan(articles: List[Dict]) -> Dict:
 
     for article in articles:
         result = run_single(article)
-        if result.get("threat_detected"):
+        threat_detected = result.get("threat_detected")
+        verification = result.get("verification", {})
+        
+        # Only process if threat is detected, verified by the agent, and credibility > 0.6
+        is_verified = str(verification.get("verified")).lower() == "true"
+        try:
+            cred_score = float(verification.get("credibility_score", 0.0))
+        except (ValueError, TypeError):
+            cred_score = 0.0
+
+        is_threat = (threat_detected is True or str(threat_detected).lower() == "true")
+        
+        if is_threat and is_verified and cred_score > 0.6:
             alerts.append(result)
             iso = result.get("threat", {}).get("country_iso", "") or article.get("country_iso", "")
+            if isinstance(iso, int):
+                iso = f"{iso:03d}"
+            elif isinstance(iso, str) and iso.isdigit():
+                iso = iso.zfill(3)
             location = result.get("threat", {}).get("location", "Unknown")
             risk = result.get("final_risk_level", "green")
             risk_order = {"green": 0, "yellow": 1, "orange": 2, "red": 3}
@@ -287,6 +306,30 @@ def run_full_scan(articles: List[Dict]) -> Dict:
                         "iso": iso,
                         "disease": result.get("threat", {}).get("disease", ""),
                     }
+            
+            # Use forecast at_risk_iso
+            forecast = result.get("forecast", {})
+            at_risk_isos = forecast.get("at_risk_iso", [])
+            if isinstance(at_risk_isos, list):
+                for ar_iso in at_risk_isos:
+                    if isinstance(ar_iso, int):
+                        ar_iso_str = f"{ar_iso:03d}"
+                    elif isinstance(ar_iso, str) and ar_iso.isdigit():
+                        ar_iso_str = ar_iso.zfill(3)
+                    else:
+                        ar_iso_str = ar_iso
+                    
+                    if ar_iso_str:
+                        ar_current = country_risks.get(ar_iso_str, {}).get("risk", "green")
+                        # At risk countries get yellow or orange typically
+                        ar_risk = "orange" if risk == "red" else "yellow"
+                        if risk_order.get(ar_risk, 0) > risk_order.get(ar_current, 0):
+                            country_risks[ar_iso_str] = {
+                                "risk": ar_risk,
+                                "name": f"At risk from {location}",
+                                "iso": ar_iso_str,
+                                "disease": result.get("threat", {}).get("disease", ""),
+                            }
 
     return {
         "alerts": alerts,

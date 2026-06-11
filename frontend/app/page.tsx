@@ -62,7 +62,7 @@ export default function Dashboard() {
       try {
         const resp = await fetch(`${API_BASE}/latest`);
         const data = await resp.json();
-        if (data.alerts?.length) setScanData(data);
+        setScanData(data);
       } catch {}
     } finally {
       setScanning(false);
@@ -71,7 +71,7 @@ export default function Dashboard() {
 
   useEffect(() => {
     fetch(`${API_BASE}/latest`).then(r => r.json()).then(data => {
-      if (data.alerts?.length) setScanData(data);
+      setScanData(data);
     }).catch(() => {});
   }, []);
 

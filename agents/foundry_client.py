@@ -37,7 +37,7 @@ def call_llm(system_prompt: str, user_prompt: str, max_tokens: int = 4000) -> st
     return response.choices[0].message.content.strip()
 
 
-def call_llm_json(system_prompt: str, user_prompt: str, max_tokens: int = 500) -> dict:
+def call_llm_json(system_prompt: str, user_prompt: str, max_tokens: int = 4000) -> dict:
     raw = call_llm(system_prompt, user_prompt, max_tokens)
     clean = raw.replace("```json", "").replace("```", "").strip()
     return json.loads(clean)

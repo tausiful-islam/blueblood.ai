@@ -125,7 +125,7 @@ async def _fetch_reliefweb(max_reports: int = 10) -> List[Dict]:
     url = "https://api.reliefweb.int/v1/reports"
     params = {
         "appname": "blueblood-ai",
-        "query[value": json.dumps({
+        "query[value]": json.dumps({
             "operator": "AND",
             "conditions": [
                 {"field": "theme.name", "value": "Health"},
@@ -151,7 +151,7 @@ async def _fetch_reliefweb(max_reports: int = 10) -> List[Dict]:
                 body = re.sub(r'<[^>]+>', '', body)[:500]
                 countries = fields.get("country", [])
                 country_name = countries[0].get("name", "") if countries else ""
-                country_iso = countries[0].get("iso3", "").lower() if countries else ""
+                country_iso = get_country_iso(country_name)
                 source = fields.get("source", [])
                 source_name = source[0].get("name", "ReliefWeb") if source else "ReliefWeb"
                 results.append({
