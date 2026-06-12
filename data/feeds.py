@@ -122,6 +122,57 @@ async def fetch_reliefweb_reports(max_reports: int = 10) -> List[Dict]:
 
 
 async def _fetch_reliefweb(max_reports: int = 10) -> List[Dict]:
+    results = []
+    results.extend(await _fetch_who_don(max_reports))
+    if len(results) < max_reports:
+        results.extend(await _fetch_reliefweb_v0(max_reports - len(results)))
+    return results[:max_reports]
+
+
+async def _fetch_who_don(max_reports: int = 10) -> List[Dict]:
+    async with httpx.AsyncClient() as client:
+        try:
+            resp = await client.get(
+                "https://www.who.int/rss-feeds/news-english.xml",
+                timeout=10,
+            )
+            items = re.findall(r"<item>(.*?)</item>", resp.text, re.DOTALL)
+            results = []
+            health_kw = ["outbreak", "disease", "ebola", "cholera", "dengue", "measles",
+                         "malaria", "epidemic", "pandemic", "health emergency", "who"]
+            for item in items[:max_reports * 2]:
+                title_m = re.search(r"<!\[CDATA\[(.*?)\]\]|<title>(.*?)</title>", item)
+                desc_m = re.search(r"<!\[CDATA\[(.*?)\]\]|<description>(.*?)</description>", item)
+                link_m = re.search(r"<link>(.*?)</link>", item)
+                title_text = (title_m.group(1) or title_m.group(2) or "").strip() if title_m else ""
+                desc_text = (desc_m.group(1) or desc_m.group(2) or "").strip() if desc_m else ""
+                text_lower = (title_text + " " + desc_text).lower()
+                if not any(kw in text_lower for kw in health_kw):
+                    continue
+                country_iso = ""
+                for name, code in COUNTRY_ISO_MAP.items():
+                    if name in text_lower:
+                        country_iso = code
+                        break
+                results.append({
+                    "title": title_text,
+                    "description": desc_text[:200],
+                    "source": "WHO",
+                    "url": link_m.group(1).strip() if link_m else "",
+                    "published_at": "",
+                    "content": f"{title_text}. {desc_text[:300]}",
+                    "country_iso": country_iso,
+                    "country_name": "",
+                })
+                if len(results) >= max_reports:
+                    break
+            return results
+        except Exception as e:
+            print(f"WHO RSS error: {e}")
+            return []
+
+
+async def _fetch_reliefweb_v0(max_reports: int = 10) -> List[Dict]:
     url = "https://api.reliefweb.int/v1/reports"
     params = {
         "appname": "blueblood-ai",
@@ -180,19 +231,32 @@ async def fetch_ecdc_threats() -> List[Dict]:
             items = re.findall(r"<item>(.*?)</item>", resp.text, re.DOTALL)
             results = []
             for item in items[:5]:
-                title = re.search(r"<title>(.*?)</title>", item)
-                desc = re.search(r"<description>(.*?)</description>", item)
+                title = re.search(r"<title><!\[CDATA\[(.*?)\]\]|<title>(.*?)</title>", item)
+                desc = re.search(r"<description><!\[CDATA\[(.*?)\]\]|<description>(.*?)</description>", item)
                 link = re.search(r"<link>(.*?)</link>", item)
-                title_text = title.group(1) if title else ""
-                desc_text = desc.group(1) if desc else ""
+                title_text = ""
+                if title:
+                    title_text = (title.group(1) or title.group(2) or "").strip()
+                desc_text = ""
+                if desc:
+                    desc_text = (desc.group(1) or desc.group(2) or "").strip()
+                desc_text = re.sub(r'<[^>]+>', '', desc_text)
+                content = f"{title_text}. {desc_text[:400]}"
+                country_iso = ""
+                text_lower = content.lower()
+                for name, code in COUNTRY_ISO_MAP.items():
+                    if name in text_lower:
+                        country_iso = code
+                        break
                 results.append({
                     "title": title_text,
                     "description": desc_text[:200],
                     "source": "ECDC",
-                    "url": link.group(1) if link else "",
+                    "url": link.group(1).strip() if link else "",
                     "published_at": "",
-                    "content": f"{title_text}. {desc_text[:300]}",
-                    "country_iso": "",
+                    "content": content,
+                    "country_iso": country_iso,
+                    "country_name": "",
                 })
             return results
         except Exception as e:

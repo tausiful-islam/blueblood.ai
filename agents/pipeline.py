@@ -24,7 +24,7 @@ Analyze the text and return ONLY a valid JSON object (no markdown, no backticks)
   "signals": ["list", "of", "key", "signals", "found"]
 }
 
-Be very strict: ONLY return threat_detected: true if the article explicitly mentions a current, ongoing disease outbreak or health emergency. DO NOT hallucinate or assume countries. If a country is not explicitly named in the text, set location to null and country_iso to null."""
+Be strict: ONLY return threat_detected: true if the article explicitly mentions a current or recent disease outbreak, health emergency, or unusual disease activity. Try hard to identify the country from context clues, mentions of cities, regions, or organizations. If you can infer the country from context (e.g., "Kinshasa" → Democratic Republic of the Congo, "Mumbai" → India), set location and country_iso accordingly. If truly no country can be inferred, set both to null."""
 
 
 VERIFICATION_PROMPT = """You are a verification agent for BlueBlood.ai health intelligence platform.
@@ -35,7 +35,7 @@ Your job is to assess the credibility of a health threat report based on:
 3. Whether this matches known disease patterns for the region
 4. Presence of official confirmation language
 
-Be extremely strict. Ensure that the threat actually exists in the named country based ONLY on the provided text. If the text does not contain proof of an outbreak in that specific location, set verified to false and give a low credibility score (e.g. 0.0 to 0.4).
+Be balanced in your assessment. Health news from established sources (Reuters, AP, WHO, CDC, major outlets) should get high credibility scores (0.7-0.9). Reports from smaller outlets covering real events should get moderate scores (0.5-0.7). Only give very low scores (below 0.4) for completely unverified claims from unknown sources. If the text describes a real reported event (even second-hand), consider it partially verified.
 
 Return ONLY a valid JSON object (no markdown, no backticks):
 {
@@ -286,14 +286,24 @@ def run_full_scan(articles: List[Dict]) -> Dict:
 
         is_threat = (threat_detected is True or str(threat_detected).lower() == "true")
         
-        if is_threat and is_verified and cred_score > 0.6:
+        if is_threat:
+            if not is_verified or cred_score < 0.5:
+                risk_order_map = {"red": "orange", "orange": "yellow", "yellow": "yellow", "green": "green"}
+                current_risk = result.get("final_risk_level", "yellow")
+                result["final_risk_level"] = risk_order_map.get(current_risk, "yellow")
+                if not result.get("verification"):
+                    result["verification"] = {}
+                result["verification"]["note"] = f"Low credibility ({cred_score:.0%}), shown as unverified"
+
             alerts.append(result)
             iso = result.get("threat", {}).get("country_iso", "") or article.get("country_iso", "")
             if isinstance(iso, int):
                 iso = f"{iso:03d}"
             elif isinstance(iso, str) and iso.isdigit():
                 iso = iso.zfill(3)
-            location = result.get("threat", {}).get("location", "Unknown")
+            location = result.get("threat", {}).get("location", "") or ""
+            if not location or location == "None":
+                location = article.get("country_name", "") or "Unknown"
             risk = result.get("final_risk_level", "green")
             risk_order = {"green": 0, "yellow": 1, "orange": 2, "red": 3}
             if location and location != "Unknown":

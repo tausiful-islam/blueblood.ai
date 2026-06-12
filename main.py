@@ -1,5 +1,6 @@
 import asyncio
 import os
+import logging
 from contextlib import asynccontextmanager
 from typing import Optional
 
@@ -13,25 +14,35 @@ load_dotenv()
 from agents.pipeline import run_single, run_full_scan
 from data.feeds import fetch_all_sources
 
+logging.basicConfig(level=logging.INFO)
+logger = logging.getLogger("blueblood")
+
 latest_scan_result = {}
 scan_in_progress = False
 
 
 async def _auto_scan():
-    global latest_scan_result
+    global latest_scan_result, scan_in_progress
+    scan_in_progress = True
     try:
+        logger.info("Auto-scan: fetching articles...")
         articles = await fetch_all_sources(max_per_source=5)
+        logger.info(f"Auto-scan: got {len(articles)} articles, running pipeline...")
         if articles:
             result = await asyncio.to_thread(run_full_scan, articles)
             latest_scan_result = result
-            print(f"Auto-scan complete: {result['threats_found']} threats found from {result['total_scanned']} articles")
+            logger.info(f"Auto-scan complete: {result['threats_found']} threats from {result['total_scanned']} articles")
+        else:
+            logger.warning("Auto-scan: no articles fetched")
     except Exception as e:
-        print(f"Auto-scan error: {e}")
+        logger.error(f"Auto-scan error: {e}", exc_info=True)
+    finally:
+        scan_in_progress = False
 
 
 @asynccontextmanager
 async def lifespan(app: FastAPI):
-    await _auto_scan()
+    asyncio.create_task(_auto_scan())
     yield
 
 

@@ -40,4 +40,11 @@ def call_llm(system_prompt: str, user_prompt: str, max_tokens: int = 4000) -> st
 def call_llm_json(system_prompt: str, user_prompt: str, max_tokens: int = 4000) -> dict:
     raw = call_llm(system_prompt, user_prompt, max_tokens)
     clean = raw.replace("```json", "").replace("```", "").strip()
-    return json.loads(clean)
+    brace_start = clean.find("{")
+    brace_end = clean.rfind("}")
+    if brace_start != -1 and brace_end != -1 and brace_end > brace_start:
+        clean = clean[brace_start:brace_end + 1]
+    try:
+        return json.loads(clean)
+    except json.JSONDecodeError:
+        return {"raw_response": raw, "parse_error": True}

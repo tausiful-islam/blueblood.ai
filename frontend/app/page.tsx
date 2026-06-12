@@ -50,29 +50,66 @@ export default function Dashboard() {
   const [analyzing, setAnalyzing] = useState(false);
   const [activeTab, setActiveTab] = useState<"alerts" | "agents" | "analyze">("alerts");
 
+  const [error, setError] = useState<string | null>(null);
+
+  const fetchLatest = useCallback(async () => {
+    try {
+      const resp = await fetch(`${API_BASE}/latest`);
+      if (resp.ok) {
+        const data = await resp.json();
+        if (data.threats_found > 0 || data.total_scanned > 0) {
+          setScanData(data);
+          return true;
+        }
+      }
+    } catch {}
+    return false;
+  }, []);
+
+  const pollUntilResults = useCallback(async (intervalMs = 5000, maxAttempts = 30) => {
+    for (let i = 0; i < maxAttempts; i++) {
+      await new Promise((r) => setTimeout(r, intervalMs));
+      const gotResults = await fetchLatest();
+      if (gotResults) return;
+    }
+  }, [fetchLatest]);
+
   const fetchScan = useCallback(async () => {
     setScanning(true);
+    setError(null);
     try {
       const resp = await fetch(`${API_BASE}/scan`, { signal: AbortSignal.timeout(120000) });
-      const data = await resp.json();
-      if (data.status !== "scan_in_progress") {
-        setScanData(data);
+      if (!resp.ok) {
+        const text = await resp.text();
+        throw new Error(`Server error ${resp.status}: ${text.slice(0, 100)}`);
       }
-    } catch {
-      try {
-        const resp = await fetch(`${API_BASE}/latest`);
-        const data = await resp.json();
-        setScanData(data);
-      } catch {}
+      const data = await resp.json();
+      if (data.status === "scan_in_progress") {
+        pollUntilResults();
+        return;
+      }
+      setScanData(data);
+    } catch (e: any) {
+      console.error("Scan failed:", e);
+      setError(e.message || "Scan failed — is the backend running?");
+      fetchLatest();
     } finally {
       setScanning(false);
     }
-  }, []);
+  }, [pollUntilResults, fetchLatest]);
 
   useEffect(() => {
-    fetch(`${API_BASE}/latest`).then(r => r.json()).then(data => {
-      setScanData(data);
-    }).catch(() => {});
+    fetch(`${API_BASE}/latest`)
+      .then((r) => {
+        if (!r.ok) throw new Error(`${r.status}`);
+        return r.json();
+      })
+      .then((data) => {
+        if (data.threats_found > 0 || data.total_scanned > 0) {
+          setScanData(data);
+        }
+      })
+      .catch(() => {});
   }, []);
 
   const analyzeCustom = async () => {
@@ -317,6 +354,11 @@ export default function Dashboard() {
                     <div className="text-2xl mb-2">🛡️</div>
                     <p className="text-slate-500 text-xs">No active threats detected</p>
                     <p className="text-slate-600 text-[10px] mt-1">Run a scan to monitor global health signals</p>
+                  </div>
+                )}
+                {error && (
+                  <div className="rounded-xl border border-red-500/30 bg-red-500/10 p-3 text-center">
+                    <p className="text-red-400 text-xs">{error}</p>
                   </div>
                 )}
                 {!scanning && countryAlerts.map((alert, i) => {
